@@ -76,7 +76,7 @@ ifeq ($(HOST_OS),darwin)
             LEOPARD_SDK := /Developer/SDKs/MacOSX10.6.sdk
         endif
         MY_CFLAGS += -isysroot $(LEOPARD_SDK) -mmacosx-version-min=10.5 -DMACOSX_DEPLOYMENT_TARGET=10.5
-        MY_LDLIBS += -isysroot $(LEOPARD_SDK) -Wl,-syslibroot,$(LEOPARD_SDK) -mmacosx-version-min=10.5
+        MY_LDLIBS += -isysroot $(LEOPARD_SDK) -Wl,-syslibroot,$(LEOPARD_SDK) -mmacosx-version-min=10.5 -read_only_relocs suppress
     endif
 endif
 

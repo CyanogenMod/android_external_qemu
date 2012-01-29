@@ -284,7 +284,7 @@ $(call gen-hw-config-defs)
 
 ifeq ($(HOST_OS),darwin)
     FRAMEWORKS := OpenGL Cocoa QuickTime ApplicationServices Carbon IOKit
-    LOCAL_LDLIBS += $(FRAMEWORKS:%=-Wl,-framework,%)
+    LOCAL_LDLIBS += $(FRAMEWORKS:%=-Wl,-framework,%)  -read_only_relocs suppress
 endif
 
 # Generate a completely static executable if needed.

@@ -139,11 +139,12 @@ $(call gen-hw-config-defs)
 $(call end-emulator-library)
 
 ## another for 64-bit
-# NOTE: only linux in non-standalone mode is supported, because
+# NOTE: only linux in non-standalone mode on 64-bit hosts is supported, because
 #  1) For Windows: amd64-mingw32msvc-gcc doesn't work, see http://b/issue?id=5949152.
 #  2) For MacOSX: 64-bit libSDL*.a 1.2.x depends on NSQuickDrawView doesn't exist
 #  3) Standalone has --try-64
 ifeq ($(HOST_OS),linux)
+ ifeq ($(HOST_BITS),64)
   ifneq ($(BUILD_STANDALONE_EMULATOR),true)
     $(call start-emulator-library, emulator64-common)
     LOCAL_CFLAGS += $(common_LOCAL_CFLAGS) -m64
@@ -151,6 +152,7 @@ ifeq ($(HOST_OS),linux)
     $(call gen-hw-config-defs)
     $(call end-emulator-library)
   endif # BUILD_STANDALONE_EMULATOR == nil
+ endif # HOST_BITS == 64
 endif # HOST_OS == linux
 
 ##############################################################################
@@ -295,6 +297,7 @@ $(call end-emulator-library)
 
 ## another for 64-bit, see note in emulator64-common
 ifeq ($(HOST_OS),linux)
+ ifeq ($(HOST_BITS),64)
   ifneq ($(BUILD_STANDALONE_EMULATOR),true)
     $(call start-emulator-library, emulator64-libui)
     LOCAL_CFLAGS += $(common_LOCAL_CFLAGS) -m64
@@ -302,6 +305,7 @@ ifeq ($(HOST_OS),linux)
     $(call gen-hw-config-defs)
     $(call end-emulator-library)
   endif # BUILD_STANDALONE_EMULATOR == nil
+ endif # HOST_BITS == 64
 endif # HOST_OS == linux
 
 
@@ -620,6 +624,7 @@ $(call end-emulator-library)
 
 ## another for 64-bit, see note in emulator64-common
 ifeq ($(HOST_OS),linux)
+ ifeq ($(HOST_BITS),64)
   ifneq ($(BUILD_STANDALONE_EMULATOR),true)
     $(call start-emulator-library, emulator64-libqemu)
     # gdbstub-xml.c contains C-compilable arrays corresponding to the content
@@ -639,6 +644,7 @@ ifeq ($(HOST_OS),linux)
     $(call gen-hw-config-defs)
     $(call end-emulator-library)
   endif # BUILD_STANDALONE_EMULATOR == nil
+ endif # HOST_BITS == 64
 endif # HOST_OS == linux
 
 
@@ -714,6 +720,7 @@ $(call end-emulator-library)
 
 ## another for 64-bit, see note in emulator64-common
 ifeq ($(HOST_OS),linux)
+ ifeq ($(HOST_BITS),64)
   ifneq ($(BUILD_STANDALONE_EMULATOR),true)
     $(call start-emulator-library, emulator64-libelff)
     LOCAL_CPP_EXTENSION := .cc
@@ -721,6 +728,7 @@ ifeq ($(HOST_OS),linux)
     LOCAL_SRC_FILES += $(common_LOCAL_SRC_FILES)
     $(call end-emulator-library)
   endif # BUILD_STANDALONE_EMULATOR == nil
+ endif # HOST_BITS == 64
 endif # HOST_OS == linux
 
 

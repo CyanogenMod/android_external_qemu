@@ -202,10 +202,11 @@ endif
 
 ifeq ($(HOST_OS),darwin)
   QEMU_SYSTEM_LDLIBS += -Wl,-framework,Cocoa,-framework,QTKit,-framework,CoreVideo
-  ifneq ($(filter 10.7 10.7.%,$(DARWIN_VERSION)),)
+  ifneq ($(filter 10.7 10.7.% 10.8 10.8.%,$(DARWIN_VERSION)),)
     # Lion/XCode4 needs to be explicitly told the dynamic library
     # lookup symbols in the precompiled libSDL are resolved at
-    # runtime
+    # runtimei
+    # This is also true for Mountain Lion
     QEMU_SYSTEM_LDLIBS += -undefined dynamic_lookup
   endif
 endif

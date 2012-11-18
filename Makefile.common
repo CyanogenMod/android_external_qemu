@@ -139,12 +139,10 @@ $(call gen-hw-config-defs)
 $(call end-emulator-library)
 
 ## another for 64-bit
-# NOTE: only linux in non-standalone mode on 64-bit hosts is supported, because
+# NOTE: only linux and darwin in non-standalone mode is supported, because
 #  1) For Windows: amd64-mingw32msvc-gcc doesn't work, see http://b/issue?id=5949152.
-#  2) For MacOSX: 64-bit libSDL*.a 1.2.x depends on NSQuickDrawView doesn't exist
-#  3) Standalone has --try-64
-ifeq ($(HOST_OS),linux)
- ifeq ($(HOST_BITS),64)
+#  2) Standalone has --try-64
+ifneq ($(filter linux darwin,$(HOST_OS)),)
   ifneq ($(BUILD_STANDALONE_EMULATOR),true)
     $(call start-emulator-library, emulator64-common)
     LOCAL_CFLAGS += $(common_LOCAL_CFLAGS) -m64
@@ -152,8 +150,7 @@ ifeq ($(HOST_OS),linux)
     $(call gen-hw-config-defs)
     $(call end-emulator-library)
   endif # BUILD_STANDALONE_EMULATOR == nil
- endif # HOST_BITS == 64
-endif # HOST_OS == linux
+endif # HOST_OS == linux || darwin
 
 ##############################################################################
 ##############################################################################
@@ -166,7 +163,9 @@ endif # HOST_OS == linux
 common_LOCAL_CFLAGS =
 common_LOCAL_SRC_FILES =
 
-EMULATOR_LIBUI_CFLAGS :=
+ifneq ($(QEMU_OPENGLES_INCLUDE),)
+    EMULATOR_LIBUI_CFLAGS := -I$(QEMU_OPENGLES_INCLUDE)
+endif
 
 common_LOCAL_CFLAGS += $(EMULATOR_COMMON_CFLAGS)
 
@@ -195,14 +194,6 @@ BUILD_SDL_FROM_SOURCES := true
 # development packages on our build servers.
 #
 ifeq ($(QEMU_HOST_TAG),linux-x86)
-    BUILD_SDL_FROM_SOURCES := false
-endif
-
-# On darwin-x86, a bug in the Android build system prevents the compilation
-# of Objective-C sources. Fixed recently in AOSP, but we still use the
-# prebuilts for the benefit of older platform branches.
-#
-ifeq ($(QEMU_HOST_TAG),darwin-x86)
     BUILD_SDL_FROM_SOURCES := false
 endif
 
@@ -238,7 +229,7 @@ ifneq ($(BUILD_SDL_FROM_SOURCES),true)
 
 else # BUILD_SDL_FROM_SOURCES
 
-    SDL_DIR := distrib/sdl-1.2.12
+    SDL_DIR := distrib/sdl-1.2.15
     include $(LOCAL_PATH)/$(SDL_DIR)/sources.make
     common_LOCAL_SRC_FILES += $(SDL_SOURCES)
 
@@ -296,8 +287,7 @@ $(call end-emulator-library)
 
 
 ## another for 64-bit, see note in emulator64-common
-ifeq ($(HOST_OS),linux)
- ifeq ($(HOST_BITS),64)
+ifneq ($(filter linux darwin,$(HOST_OS)),)
   ifneq ($(BUILD_STANDALONE_EMULATOR),true)
     $(call start-emulator-library, emulator64-libui)
     LOCAL_CFLAGS += $(common_LOCAL_CFLAGS) -m64
@@ -305,8 +295,7 @@ ifeq ($(HOST_OS),linux)
     $(call gen-hw-config-defs)
     $(call end-emulator-library)
   endif # BUILD_STANDALONE_EMULATOR == nil
- endif # HOST_BITS == 64
-endif # HOST_OS == linux
+endif # HOST_OS == linux || darwin
 
 
 ##############################################################################
@@ -324,18 +313,6 @@ common_LOCAL_SRC_FILES =
 EMULATOR_LIBQEMU_CFLAGS :=
 
 common_LOCAL_CFLAGS += $(EMULATOR_COMMON_CFLAGS)
-
-###########################################################
-# Jpeg configuration
-#
-LIBJPEG_DIR := distrib/jpeg-6b
-include $(LOCAL_PATH)/$(LIBJPEG_DIR)/sources.make
-
-EMULATOR_LIBQEMU_CFLAGS += \
-    $(LIBJPEG_CFLAGS) \
-    -I$(LOCAL_PATH)/$(LIBJPEG_DIR)
-
-common_LOCAL_SRC_FILES += $(LIBJPEG_SOURCES)
 
 AUDIO_SOURCES := noaudio.c wavaudio.c wavcapture.c mixeng.c
 AUDIO_CFLAGS  := -I$(LOCAL_PATH)/audio -DHAS_AUDIO
@@ -480,7 +457,6 @@ CORE_MISC_SOURCES = \
     android/hw-pipe-net.c \
     android/qemu-setup.c \
     android/snapshot.c \
-    android/android-device.c \
     android/async-socket-connector.c \
     android/async-socket.c \
     android/sdk-controller-socket.c \
@@ -529,7 +505,7 @@ endif
 common_LOCAL_SRC_FILES += $(CORE_MISC_SOURCES)
 
 # Required
-common_LOCAL_CFLAGS += -D_XOPEN_SOURCE=600 -D_BSD_SOURCE=1
+common_LOCAL_CFLAGS += -D_XOPEN_SOURCE=600 -D_BSD_SOURCE=1 -I$(LOCAL_PATH)/distrib/jpeg-6b
 
 SLIRP_SOURCES := \
     bootp.c \
@@ -623,8 +599,7 @@ $(call end-emulator-library)
 
 
 ## another for 64-bit, see note in emulator64-common
-ifeq ($(HOST_OS),linux)
- ifeq ($(HOST_BITS),64)
+ifneq ($(filter linux darwin,$(HOST_OS)),)
   ifneq ($(BUILD_STANDALONE_EMULATOR),true)
     $(call start-emulator-library, emulator64-libqemu)
     # gdbstub-xml.c contains C-compilable arrays corresponding to the content
@@ -644,8 +619,7 @@ ifeq ($(HOST_OS),linux)
     $(call gen-hw-config-defs)
     $(call end-emulator-library)
   endif # BUILD_STANDALONE_EMULATOR == nil
- endif # HOST_BITS == 64
-endif # HOST_OS == linux
+endif # HOST_OS == linux || darwin
 
 
 # Block sources, we must compile them with each executable because they
@@ -677,6 +651,46 @@ endif
 
 BLOCK_CFLAGS += $(EMULATOR_COMMON_CFLAGS)
 BLOCK_CFLAGS += -DCONFIG_BDRV_WHITELIST=""
+
+##############################################################################
+##############################################################################
+###
+###  emulator-libjpeg: TARGET-INDEPENDENT QEMU FUNCTIONS
+###
+###  THESE ARE USED BY EVERYTHING EXCEPT 'emulator-ui'
+###
+
+common_LOCAL_CFLAGS =
+common_LOCAL_SRC_FILES =
+
+###########################################################
+# Jpeg configuration
+#
+LIBJPEG_DIR := distrib/jpeg-6b
+include $(LOCAL_PATH)/$(LIBJPEG_DIR)/sources.make
+
+common_LOCAL_SRC_FILES += $(LIBJPEG_SOURCES)
+
+common_LOCAL_CFLAGS += \
+    $(LIBJPEG_CFLAGS) \
+    -I$(LOCAL_PATH)/$(LIBJPEG_DIR)
+
+## one for 32-bit
+$(call start-emulator-library, emulator-libjpeg)
+LOCAL_CFLAGS += $(common_LOCAL_CFLAGS)
+LOCAL_SRC_FILES += $(common_LOCAL_SRC_FILES)
+$(call end-emulator-library)
+
+
+## another for 64-bit, see note in emulator64-common
+ifneq ($(filter linux darwin,$(HOST_OS)),)
+  ifneq ($(BUILD_STANDALONE_EMULATOR),true)
+    $(call start-emulator-library, emulator64-libjpeg)
+    LOCAL_CFLAGS += $(common_LOCAL_CFLAGS) -m64
+    LOCAL_SRC_FILES += $(common_LOCAL_SRC_FILES)
+    $(call end-emulator-library)
+  endif # BUILD_STANDALONE_EMULATOR == nil
+endif # HOST_OS == linux
 
 
 ##############################################################################
@@ -719,8 +733,7 @@ $(call end-emulator-library)
 
 
 ## another for 64-bit, see note in emulator64-common
-ifeq ($(HOST_OS),linux)
- ifeq ($(HOST_BITS),64)
+ifneq ($(filter linux darwin,$(HOST_OS)),)
   ifneq ($(BUILD_STANDALONE_EMULATOR),true)
     $(call start-emulator-library, emulator64-libelff)
     LOCAL_CPP_EXTENSION := .cc
@@ -728,8 +741,7 @@ ifeq ($(HOST_OS),linux)
     LOCAL_SRC_FILES += $(common_LOCAL_SRC_FILES)
     $(call end-emulator-library)
   endif # BUILD_STANDALONE_EMULATOR == nil
- endif # HOST_BITS == 64
-endif # HOST_OS == linux
+endif # HOST_OS == linux || darwin
 
 
 ##############################################################################

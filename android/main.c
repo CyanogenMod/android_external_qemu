@@ -407,6 +407,9 @@ int main(int argc, char **argv)
 #elif defined(TARGET_I386)
         free(android_hw->hw_cpu_arch);
         android_hw->hw_cpu_arch = ASTRDUP("x86");
+#elif defined(TARGET_MIPS)
+        free(android_hw->hw_cpu_arch);
+        android_hw->hw_cpu_arch = ASTRDUP("mips");
 #endif
     }
 
@@ -721,6 +724,18 @@ int main(int argc, char **argv)
         if (opts->cache) {
             hw->disk_cachePartition_path = ASTRDUP(opts->cache);
         }
+    }
+
+    if (hw->disk_cachePartition_path && opts->cache_size) {
+        /* Set cache partition size per user options. */
+        char*  end;
+        long   sizeMB = strtol(opts->cache_size, &end, 0);
+
+        if (sizeMB < 0 || *end != 0) {
+            derror( "-cache-size must be followed by a positive integer" );
+            exit(1);
+        }
+        hw->disk_cachePartition_size = (uint64_t) sizeMB * ONE_MB;
     }
 
     /** SD CARD PARTITION */

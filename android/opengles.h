@@ -14,12 +14,6 @@
 
 #include <stddef.h>
 
-#define ANDROID_OPENGLES_BASE_PORT  22468
-
-/* See the description in render_api.h. */
-typedef void (*OnPostFn)(void* context, int width, int height, int ydir,
-                         int format, int type, unsigned char* pixels);
-
 /* Call this function to initialize the hardware opengles emulation.
  * This function will abort if we can't find the corresponding host
  * libraries through dlopen() or equivalent.
@@ -30,8 +24,24 @@ int android_initOpenglesEmulation(void);
  * At the moment, this must be done before the VM starts. The onPost callback
  * may be NULL.
  */
-int android_startOpenglesRenderer(int width, int height,
-                                  OnPostFn onPost, void* onPostContext);
+int android_startOpenglesRenderer(int width, int height);
+
+/* See the description in render_api.h. */
+typedef void (*OnPostFunc)(void* context, int width, int height, int ydir,
+                           int format, int type, unsigned char* pixels);
+void android_setPostCallback(OnPostFunc onPost, void* onPostContext);
+
+/* Retrieve the Vendor/Renderer/Version strings describing the underlying GL
+ * implementation. The call only works while the renderer is started.
+ *
+ * Each string is copied into the corresponding buffer. If the original string
+ * (including NUL terminator) is more than xxBufSize bytes, it will be
+ * truncated. In all cases, including failure, the buffer will be NUL-
+ * terminated when this function returns.
+ */
+void android_getOpenglesHardwareStrings(char* vendor, size_t vendorBufSize,
+                                        char* renderer, size_t rendererBufSize,
+                                        char* version, size_t versionBufSize);
 
 int android_showOpenglesWindow(void* window, int x, int y, int width, int height, float rotation);
 
@@ -47,8 +57,10 @@ void android_stopOpenglesRenderer(void);
  */
 extern int  android_gles_fast_pipes;
 
-/* Write the path of the Unix socket we're going to use to access GLES on a given <port> */
-/* The result is only valid on Unix systems */
-void android_gles_unix_path(char* buff, size_t buffsize, int port);
+/* Get the address of the socket that clients should connect to to access GLES.
+ * For TCP this is just the port number (as a string) on the loopback address.
+ * For UNIX and Win32 pipes it is the full pathname of the pipe.
+ */
+void android_gles_server_path(char* buff, size_t buffsize);
 
 #endif /* ANDROID_OPENGLES_H */

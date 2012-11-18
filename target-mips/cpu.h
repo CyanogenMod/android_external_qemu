@@ -39,7 +39,6 @@ struct r4k_tlb_t {
 typedef struct CPUMIPSTLBContext CPUMIPSTLBContext;
 struct CPUMIPSTLBContext {
     uint32_t nb_tlb;
-    uint32_t tlb_in_use;
     int (*map_address) (struct CPUMIPSState *env, target_phys_addr_t *physical, int *prot, target_ulong address, int rw, int access_type);
     void (*helper_tlbwi) (void);
     void (*helper_tlbwr) (void);
@@ -518,6 +517,37 @@ static inline void cpu_clone_regs(CPUState *env, target_ulong newsp)
     env->active_tc.gpr[2] = 0;
 }
 
+static inline int cpu_mips_hw_interrupts_pending(CPUState *env)
+{
+    int32_t pending;
+    int32_t status;
+    int r;
+
+    if (!(env->CP0_Status & (1 << CP0St_IE)) ||
+        (env->CP0_Status & (1 << CP0St_EXL)) ||
+        (env->CP0_Status & (1 << CP0St_ERL)) ||
+        (env->hflags & MIPS_HFLAG_DM)) {
+        /* Interrupts are disabled */
+        return 0;
+    }
+
+    pending = env->CP0_Cause & CP0Ca_IP_mask;
+    status = env->CP0_Status & CP0Ca_IP_mask;
+
+    if (env->CP0_Config3 & (1 << CP0C3_VEIC)) {
+        /* A MIPS configured with a vectorizing external interrupt controller
+           will feed a vector into the Cause pending lines. The core treats
+           the status lines as a vector level, not as indiviual masks.  */
+        r = pending > status;
+    } else {
+        /* A MIPS configured with compatibility or VInt (Vectored Interrupts)
+           treats the pending lines as individual interrupt lines, the status
+           lines are individual masks.  */
+        r = pending & status;
+    }
+    return r;
+}
+
 #include "cpu-all.h"
 #include "exec-all.h"
 
@@ -599,7 +629,6 @@ int cpu_mips_handle_mmu_fault (CPUState *env, target_ulong address, int rw,
                                int mmu_idx, int is_softmmu);
 #define cpu_handle_mmu_fault cpu_mips_handle_mmu_fault
 void do_interrupt (CPUState *env);
-void r4k_invalidate_tlb (CPUState *env, int idx, int use_extra);
 target_phys_addr_t cpu_mips_translate_address (CPUState *env, target_ulong address,
 		                               int rw);
 

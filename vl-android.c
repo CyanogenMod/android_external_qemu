@@ -2271,7 +2271,7 @@ char *qemu_find_file(int type, const char *name)
             buf = qemu_find_file_with_subdir(data_dir, "../usr/share/pc-bios/", name);
         /* Finally, try this for standalone builds under external/qemu */
         if (buf == NULL)
-            buf = qemu_find_file_with_subdir(data_dir, "../../../prebuilt/common/pc-bios/", name);
+            buf = qemu_find_file_with_subdir(data_dir, "../../../prebuilts/qemu-kernel/x86/pc-bios/", name);
     }
 #endif
     return buf;
@@ -3782,6 +3782,15 @@ int main(int argc, char **argv, char **envp)
         }
     }
 
+    /* Set LCD density (if required by -qemu, and AVD is missing it. */
+    if (android_op_lcd_density && !android_hw->hw_lcd_density) {
+        int density;
+        if (parse_int(android_op_lcd_density, &density) || density <= 0) {
+            PANIC("-lcd-density : %d", density);
+        }
+        hwLcd_setBootProperty(density);
+    }
+
     /* Initialize camera emulation. */
     android_camera_service_init();
 
@@ -3867,28 +3876,33 @@ int main(int argc, char **argv, char **envp)
         nand_add_dev(tmp);
     }
 
-    /* qemu.gles will be read by the OpenGLES emulation libraries.
-    * If set to 0, the software GLES renderer will be used as a fallback.
-    * If the parameter is undefined, this means the system image runs
-    * inside an emulator that doesn't support GPU emulation at all.
-    */
+    /* qemu.gles will be read by the OpenGL ES emulation libraries.
+     * If set to 0, the software GL ES renderer will be used as a fallback.
+     * If the parameter is undefined, this means the system image runs
+     * inside an emulator that doesn't support GPU emulation at all.
+     *
+     * We always start the GL ES renderer so we can gather stats on the
+     * underlying GL implementation. If GL ES acceleration is disabled,
+     * we just shut it down again once we have the strings. */
     {
-        int  gles_emul = 0;
-
-        if (android_hw->hw_gpu_enabled) {
-            if (android_initOpenglesEmulation() == 0) {
-                gles_emul = 1;
-                /* Set framebuffer change notification callback when starting
-                 * GLES emulation. Currently only multi-touch emulation is
-                 * interested in FB changes (to transmit them to the device), so
-                 * the callback is set within MT emulation.*/
-                android_startOpenglesRenderer(android_hw->hw_lcd_width, android_hw->hw_lcd_height,
-                                              multitouch_opengles_fb_update, NULL);
+        int qemu_gles = 0;
+        if (android_initOpenglesEmulation() == 0 &&
+            android_startOpenglesRenderer(android_hw->hw_lcd_width, android_hw->hw_lcd_height) == 0)
+        {
+            android_getOpenglesHardwareStrings(
+                    android_gl_vendor, sizeof(android_gl_vendor),
+                    android_gl_renderer, sizeof(android_gl_renderer),
+                    android_gl_version, sizeof(android_gl_version));
+            if (android_hw->hw_gpu_enabled) {
+                qemu_gles = 1;
             } else {
-                dwarning("Could not initialize OpenglES emulation, using software renderer.");
+                android_stopOpenglesRenderer();
+                qemu_gles = 0;
             }
+        } else {
+            dwarning("Could not initialize OpenglES emulation, using software renderer.");
         }
-        if (gles_emul) {
+        if (qemu_gles) {
             stralloc_add_str(kernel_params, " qemu.gles=1");
         } else {
             stralloc_add_str(kernel_params, " qemu.gles=0");
@@ -4038,6 +4052,32 @@ int main(int argc, char **argv, char **envp)
         ram_size = android_hw->hw_ramSize * 1024LL * 1024;
         if (ram_size == 0) {
             ram_size = DEFAULT_RAM_SIZE * 1024 * 1024;
+        }
+    }
+
+    /* Quite often (especially on older XP machines) attempts to allocate large
+     * VM RAM is going to fail, and crash the emulator. Since it's failing deep
+     * inside QEMU, it's not really possible to provide the user with a
+     * meaningful explanation for the crash. So, lets see if QEMU is going to be
+     * able to allocate requested amount of RAM, and if not, lets try to come up
+     * with a recomendation. */
+    {
+        ram_addr_t r_ram = ram_size;
+        void* alloc_check = malloc(r_ram);
+        while (alloc_check == NULL && r_ram > 1024 * 1024) {
+        /* Make it 25% less */
+            r_ram -= r_ram / 4;
+            alloc_check = malloc(r_ram);
+        }
+        if (alloc_check != NULL) {
+            free(alloc_check);
+        }
+        if (r_ram != ram_size) {
+            /* Requested RAM is too large. Report this, as well as calculated
+             * recomendation. */
+            dwarning("Requested RAM size of %dMB is too large for your environment, and is reduced to %dMB.",
+                     (int)(ram_size / 1024 / 1024), (int)(r_ram / 1024 / 1024));
+            ram_size = r_ram;
         }
     }
 

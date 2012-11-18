@@ -29,6 +29,15 @@
 #define  D(...)    VERBOSE_PRINT(mtscreen,__VA_ARGS__)
 #define  D_ACTIVE  VERBOSE_CHECK(mtscreen)
 
+#define TRACE_ON    1
+
+#if TRACE_ON
+#define  T(...)    VERBOSE_PRINT(mtscreen,__VA_ARGS__)
+#else
+#define  T(...)
+#endif
+
+
 /* Maximum number of pointers, supported by multi-touch emulation. */
 #define MTS_POINTERS_NUM    10
 /* Signals that pointer is not tracked (or is "up"). */
@@ -54,10 +63,6 @@ typedef struct MTSState {
     AndroidMTSPort* mtsp;
     /* Emulator's display state. */
     DisplayState*   ds;
-    /* Screen width of the device that emulates multi-touch. */
-    int             device_width;
-    /* Screen height of the device that emulates multi-touch. */
-    int             device_height;
     /* Number of tracked pointers. */
     int             tracked_ptr_num;
     /* Index in the 'tracked_pointers' array of the last pointer for which
@@ -82,7 +87,7 @@ typedef struct MTSState {
 } MTSState;
 
 /* Default multi-touch screen descriptor */
-static MTSState _MTSState;
+static MTSState _MTSState = { 0 };
 
 /* Pushes event to the event device. */
 static void
@@ -239,24 +244,27 @@ static int _is_mt_initialized = 0;
 
 /* Callback that is invoked when framebuffer update has been transmitted to the
  * device. */
-static void
-_on_fb_sent(void* opaque, ATResult res, void* data, int size, int sent)
+static AsyncIOAction
+_on_fb_sent(void* opaque, SDKCtlDirectPacket* packet, AsyncIOState status)
 {
     MTSState* const mts_state = (MTSState*)opaque;
 
-    /* Lets see if we have accumulated more changes while transmission has been
-     * in progress. */
-    if (mts_state->fb_header.w && mts_state->fb_header.h) {
-        /* Send accumulated updates. */
-        if (mts_port_send_frame(mts_state->mtsp, &mts_state->fb_header,
-                                mts_state->current_fb, _on_fb_sent, mts_state,
-                                mts_state->ydir)) {
-            mts_state->fb_transfer_in_progress = 0;
+    if (status == ASIO_STATE_SUCCEEDED) {
+        /* Lets see if we have accumulated more changes while transmission has been
+         * in progress. */
+        if (mts_state->fb_header.w && mts_state->fb_header.h &&
+            !mts_state->fb_transfer_in_progress) {
+            mts_state->fb_transfer_in_progress = 1;
+            /* Send accumulated updates. */
+            if (mts_port_send_frame(mts_state->mtsp, &mts_state->fb_header,
+                                    mts_state->current_fb, _on_fb_sent, mts_state,
+                                    mts_state->ydir)) {
+                mts_state->fb_transfer_in_progress = 0;
+            }
         }
-    } else {
-        /* Framebuffer transfer is completed, and no more updates are pending. */
-        mts_state->fb_transfer_in_progress = 0;
     }
+
+    return ASIO_ACTION_DONE;
 }
 
 /* Common handler for framebuffer updates invoked by both, software, and OpenGLES
@@ -324,6 +332,9 @@ _mt_fb_update(void* opaque, int x, int y, int w, int h)
     MTSState* const mts_state = (MTSState*)opaque;
     const DisplaySurface* const surface = mts_state->ds->surface;
 
+    T("Multi-touch: Software renderer framebuffer update: %d:%d -> %dx%d",
+      x, y, w, h);
+
     /* TODO: For sofware renderer general framebuffer properties can change on
      * the fly. Find a callback that can catch that. For now, just copy FB
      * properties over in every FB update. */
@@ -336,6 +347,7 @@ _mt_fb_update(void* opaque, int x, int y, int w, int h)
 
     _mt_fb_common_update(mts_state, x, y, w, h);
 }
+
 void
 multitouch_opengles_fb_update(void* context,
                               int w, int h, int ydir,
@@ -349,6 +361,8 @@ multitouch_opengles_fb_update(void* context,
         return;
     }
 
+    T("Multi-touch: openGLES framebuffer update: 0:0 -> %dx%d", w, h);
+
     /* GLES format is always RGBA8888 */
     mts_state->fb_header.bpp = 4;
     mts_state->fb_header.bpl = 4 * w;
@@ -359,6 +373,44 @@ multitouch_opengles_fb_update(void* context,
 
     /* GLES emulator alwas update the entire framebuffer. */
     _mt_fb_common_update(mts_state, 0, 0, w, h);
+}
+
+void
+multitouch_refresh_screen(void)
+{
+    MTSState* const mts_state = &_MTSState;
+
+    /* Make sure MT port is initialized. */
+    if (!_is_mt_initialized) {
+        return;
+    }
+
+    /* Lets see if any updates have been received so far. */
+    if (NULL != mts_state->current_fb) {
+        _mt_fb_common_update(mts_state, 0, 0, mts_state->fb_header.disp_width,
+                             mts_state->fb_header.disp_height);
+    }
+}
+
+void
+multitouch_fb_updated(void)
+{
+    MTSState* const mts_state = &_MTSState;
+
+    /* This concludes framebuffer update. */
+    mts_state->fb_transfer_in_progress = 0;
+
+    /* Lets see if we have accumulated more changes while transmission has been
+     * in progress. */
+    if (mts_state->fb_header.w && mts_state->fb_header.h) {
+        mts_state->fb_transfer_in_progress = 1;
+        /* Send accumulated updates. */
+        if (mts_port_send_frame(mts_state->mtsp, &mts_state->fb_header,
+                                mts_state->current_fb, _on_fb_sent, mts_state,
+                                mts_state->ydir)) {
+            mts_state->fb_transfer_in_progress = 0;
+        }
+    }
 }
 
 void
@@ -380,8 +432,6 @@ multitouch_init(AndroidMTSPort* mtsp)
         for (index = 0; index < MTS_POINTERS_NUM; index++) {
             mts_state->tracked_pointers[index].tracking_id = MTS_POINTER_UP;
         }
-        mts_state->device_width = android_hw->hw_lcd_width;
-        mts_state->device_height = android_hw->hw_lcd_height;
         mts_state->mtsp = mtsp;
         mts_state->fb_header.header_size = sizeof(MTFrameHeader);
         mts_state->fb_transfer_in_progress = 0;
@@ -452,13 +502,4 @@ int
 multitouch_get_max_slot()
 {
     return MTS_POINTERS_NUM - 1;
-}
-
-void
-multitouch_set_device_screen_size(int width, int height)
-{
-    MTSState* const mts_state = &_MTSState;
-
-    mts_state->device_width = width;
-    mts_state->device_height = height;
 }

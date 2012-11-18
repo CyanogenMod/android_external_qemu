@@ -6,7 +6,7 @@
 MACHINE=goldfish
 VARIANT=goldfish
 OUTPUT=/tmp/kernel-qemu
-CROSSPREFIX=arm-eabi-
+CROSSPREFIX=arm-linux-androideabi-
 CONFIG=goldfish
 
 # Determine the host architecture, and which default prebuilt tag we need.
@@ -127,12 +127,16 @@ if [ -n "$OPTION_CROSS" ] ; then
 else
     case $ARCH in
         arm)
-            CROSSTOOLCHAIN=arm-eabi-4.4.3
-            CROSSPREFIX=arm-eabi-
+            CROSSTOOLCHAIN=arm-linux-androideabi-4.6
+            CROSSPREFIX=arm-linux-androideabi-
             ;;
         x86)
-            CROSSTOOLCHAIN=i686-android-linux-4.4.3
-            CROSSPREFIX=i686-android-linux-
+            CROSSTOOLCHAIN=i686-linux-android-4.6
+            CROSSPREFIX=i686-linux-android-
+            ;;
+        mips)
+            CROSSTOOLCHAIN=mipsel-linux-android-4.6
+            CROSSPREFIX=mipsel-linux-android-
             ;;
         *)
             echo "ERROR: Unsupported architecture!"
@@ -148,6 +152,9 @@ case $ARCH in
     x86)
         ZIMAGE=bzImage
         ;;
+    mips)
+        ZIMAGE=
+        ;;
 esac
 
 # If the cross-compiler is not in the path, try to find it automatically
@@ -159,13 +166,13 @@ if [ $? != 0 ] ; then
         # Assume this script is under external/qemu/distrib/ in the
         # Android source tree.
         BUILD_TOP=$(dirname $0)/../../..
-        if [ ! -d "$BUILD_TOP/prebuilt" ]; then
+        if [ ! -d "$BUILD_TOP/prebuilts" ]; then
             BUILD_TOP=
         else
             BUILD_TOP=$(cd $BUILD_TOP && pwd)
         fi
     fi
-    CROSSPREFIX=$BUILD_TOP/prebuilt/$HOST_TAG/toolchain/$CROSSTOOLCHAIN/bin/$CROSSPREFIX
+    CROSSPREFIX=$BUILD_TOP/prebuilts/gcc/$HOST_TAG/$ARCH/$CROSSTOOLCHAIN/bin/$CROSSPREFIX
     if [ "$BUILD_TOP" -a -f ${CROSSPREFIX}gcc ]; then
         echo "Auto-config: --cross=$CROSSPREFIX"
     else
@@ -184,15 +191,11 @@ fi
 
 
 # Special magic redirection with our magic toolbox script
-# This is needed to add extra compiler flags for x86
+# This is needed to add extra compiler flags to compiler.
+# See kernel-toolchain/android-kernel-toolchain-* for details
 #
-# We could use that for ARM, but don't need to at the moment.
-#
-if [ "$ARCH" = "x86" ]; then
-    export REAL_CROSS_COMPILE="$CROSS_COMPILE"
-    export ARCH
-    CROSS_COMPILE=$(dirname "$0")/kernel-toolchain/android-kernel-toolchain-
-fi
+export REAL_CROSS_COMPILE="$CROSS_COMPILE"
+CROSS_COMPILE=$(dirname "$0")/kernel-toolchain/android-kernel-toolchain-
 
 # Do the build
 #
@@ -225,8 +228,12 @@ case $CONFIG in
         OUTPUT_VMLINUX=vmlinux-$CONFIG
 esac
 
-cp -f arch/$ARCH/boot/$ZIMAGE $OUTPUT/$OUTPUT_KERNEL
 cp -f vmlinux $OUTPUT/$OUTPUT_VMLINUX
-
+if [ ! -z $ZIMAGE ]; then
+    cp -f arch/$ARCH/boot/$ZIMAGE $OUTPUT/$OUTPUT_KERNEL
+else
+    cp -f vmlinux $OUTPUT/$OUTPUT_KERNEL
+fi
 echo "Kernel $CONFIG prebuilt images ($OUTPUT_KERNEL and $OUTPUT_VMLINUX) copied to $OUTPUT successfully !"
+
 exit 0

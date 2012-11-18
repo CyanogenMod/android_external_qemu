@@ -22,7 +22,6 @@ OPTION_IGNORE_AUDIO=no
 OPTION_NO_PREBUILTS=no
 OPTION_TRY_64=no
 OPTION_HELP=no
-OPTION_DEBUG=no
 OPTION_STATIC=no
 OPTION_MINGW=no
 
@@ -59,8 +58,6 @@ for opt do
   --cc=*) OPTION_CC="$optarg"
   ;;
   --no-strip) OPTION_NO_STRIP=yes
-  ;;
-  --debug) OPTION_DEBUG=yes
   ;;
   --ignore-audio) OPTION_IGNORE_AUDIO=yes
   ;;
@@ -196,14 +193,8 @@ if [ "$IN_ANDROID_BUILD" = "yes" ] ; then
     # use ccache if USE_CCACHE is defined and the corresponding
     # binary is available.
     #
-    # note: located in PREBUILT/ccache/ccache in the new tree layout
-    #       located in PREBUILT/ccache in the old one
-    #
     if [ -n "$USE_CCACHE" ] ; then
         CCACHE="$ANDROID_PREBUILT/ccache/ccache$EXE"
-        if [ ! -f $CCACHE ] ; then
-            CCACHE="$ANDROID_PREBUILT/ccache$EXE"
-        fi
         if [ ! -f $CCACHE ] ; then
             CCACHE="$ANDROID_PREBUILTS/ccache/ccache$EXE"
         fi
@@ -240,7 +231,7 @@ if [ "$IN_ANDROID_BUILD" = "yes" ] ; then
         GLES_SUPPORT=yes
         if [ -z "$GLES_INCLUDE" ]; then
             log "GLES       : Probing for headers"
-            GLES_INCLUDE=$ANDROID_TOP/development/tools/emulator/opengl/host/include
+            GLES_INCLUDE=$ANDROID_TOP/sdk/emulator/opengl/host/include
             if [ -d "$GLES_INCLUDE" ]; then
                 log "GLES       : Headers in $GLES_INCLUDE"
             else
@@ -252,6 +243,32 @@ if [ "$IN_ANDROID_BUILD" = "yes" ] ; then
         if [ -z "$GLES_LIBS" ]; then
             log "GLES       : Probing for host libraries"
             GLES_LIBS=$(dirname "$HOST_BIN")/lib
+            if [ -d "$GLES_LIBS" ]; then
+                echo "GLES       : Libs in $GLES_LIBS"
+            else
+                echo "Warning: Could nof find OpenGLES emulation libraries in: $GLES_LIBS"
+                echo "Disabling GLES emulation from this build!"
+                GLES_SUPPORT=no
+            fi
+        fi
+    fi
+else
+    if [ "$GLES_PROBE" = "yes" ]; then
+        GLES_SUPPORT=yes
+        if [ -z "$GLES_INCLUDE" ]; then
+            log "GLES       : Probing for headers"
+            GLES_INCLUDE=../../sdk/emulator/opengl/host/include
+            if [ -d "$GLES_INCLUDE" ]; then
+                log "GLES       : Headers in $GLES_INCLUDE"
+            else
+                echo "Warning: Could not find OpenGLES emulation include dir: $GLES_INCLUDE"
+                echo "Disabling GLES emulation from this build!"
+                GLES_SUPPORT=no
+            fi
+        fi
+        if [ -z "$GLES_LIBS" ]; then
+            log "GLES       : Probing for host libraries"
+            GLES_LIBS=../../out/host/$OS/lib
             if [ -d "$GLES_LIBS" ]; then
                 echo "GLES       : Libs in $GLES_LIBS"
             else
@@ -519,6 +536,10 @@ fi
 
 if [ $TARGET_ARCH = x86 ] ; then
 echo "TARGET_ARCH       := x86" >> $config_mk
+fi
+
+if [ $TARGET_ARCH = mips ] ; then
+echo "TARGET_ARCH       := mips" >> $config_mk
 fi
 
 echo "HOST_PREBUILT_TAG := $TARGET_OS" >> $config_mk

@@ -204,10 +204,9 @@ netPipe_initFromAddress( void* hwpipe, const SockAddress*  address, Looper* loop
         }
 
         loopIo_init(pipe->io, looper, fd, netPipe_io_func, pipe);
-        asyncConnector_init(pipe->connector, address, pipe->io);
+        status = asyncConnector_init(pipe->connector, address, pipe->io);
         pipe->state = STATE_CONNECTING;
 
-        status = asyncConnector_run(pipe->connector);
         if (status == ASYNC_ERROR) {
             D("%s: Could not connect to socket: %s",
               __FUNCTION__, errno_str);
@@ -234,6 +233,17 @@ netPipe_closeFromGuest( void* opaque )
     netPipe_free(pipe);
 }
 
+static int netPipeReadySend(NetPipe *pipe)
+{
+    if (pipe->state == STATE_CONNECTED)
+        return 0;
+    else if (pipe->state == STATE_CONNECTING)
+        return PIPE_ERROR_AGAIN;
+    else if (pipe->hwpipe == NULL)
+        return PIPE_ERROR_INVAL;
+    else
+        return PIPE_ERROR_IO;
+}
 
 static int
 netPipe_sendBuffers( void* opaque, const GoldfishPipeBuffer* buffers, int numBuffers )
@@ -244,6 +254,10 @@ netPipe_sendBuffers( void* opaque, const GoldfishPipeBuffer* buffers, int numBuf
     int       buffStart = 0;
     const GoldfishPipeBuffer* buff = buffers;
     const GoldfishPipeBuffer* buffEnd = buff + numBuffers;
+
+    ret = netPipeReadySend(pipe);
+    if (ret != 0)
+        return ret;
 
     for (; buff < buffEnd; buff++)
         count += buff->size;
@@ -478,19 +492,18 @@ openglesPipe_init( void* hwpipe, void* _looper, const char* args )
         return NULL;
     }
 
+    char server_addr[PATH_MAX];
+    android_gles_server_path(server_addr, sizeof(server_addr));
 #ifndef _WIN32
     if (android_gles_fast_pipes) {
-        char  unix_path[PATH_MAX];
-        android_gles_unix_path(unix_path, sizeof(unix_path), ANDROID_OPENGLES_BASE_PORT);
-        pipe = (NetPipe *)netPipe_initUnix(hwpipe, _looper, unix_path);
-        D("Creating Unix OpenGLES pipe for GPU emulation: %s", unix_path);
+        pipe = (NetPipe *)netPipe_initUnix(hwpipe, _looper, server_addr);
+        D("Creating Unix OpenGLES pipe for GPU emulation: %s", server_addr);
     } else {
 #else /* _WIN32 */
     {
 #endif
         /* Connect through TCP as a fallback */
-        snprintf(temp, sizeof temp, "%d", ANDROID_OPENGLES_BASE_PORT);
-        pipe = (NetPipe *)netPipe_initTcp(hwpipe, _looper, temp);
+        pipe = (NetPipe *)netPipe_initTcp(hwpipe, _looper, server_addr);
         D("Creating TCP OpenGLES pipe for GPU emulation!");
     }
     if (pipe != NULL) {

@@ -36,18 +36,34 @@ JOBS=$(( $BUILD_NUM_CPUS * 2 ))
 ARCH=arm
 
 OPTION_HELP=no
-OPTION_ARMV7=no
+OPTION_ARMV7=yes
 OPTION_OUT=
 OPTION_CROSS=
 OPTION_ARCH=
 OPTION_CONFIG=
+OPTION_SAVEDEFCONFIG=no
 OPTION_JOBS=
 OPTION_VERBOSE=
+CCACHE=
+
+case "$USE_CCACHE" in
+    "")
+        CCACHE=
+        ;;
+    *)
+        # use ccache bundled in AOSP source tree
+        CCACHE=${ANDROID_BUILD_TOP:-$(dirname $0)/../../..}/prebuilts/misc/$HOST_TAG/ccache/ccache
+        [ -x $CCACHE ] || CCACHE=
+        ;;
+esac
 
 for opt do
     optarg=$(expr "x$opt" : 'x[^=]*=\(.*\)')
     case $opt in
     --help|-h|-\?) OPTION_HELP=yes
+        ;;
+    --armv5)
+        OPTION_ARMV7=no
         ;;
     --armv7)
         OPTION_ARMV7=yes
@@ -63,6 +79,12 @@ for opt do
         ;;
     --config=*)
         OPTION_CONFIG=$optarg
+        ;;
+    --savedefconfig)
+        OPTION_SAVEDEFCONFIG=yes
+        ;;
+    --ccache=*)
+        CCACHE=$optarg
         ;;
     --verbose)
         OPTION_VERBOSE=true
@@ -83,10 +105,13 @@ if [ $OPTION_HELP = "yes" ] ; then
     echo ""
     echo "  --help                   print this message"
     echo "  --arch=<arch>            change target architecture [$ARCH]"
-    echo "  --armv7                  build ARMv7 binaries (see note below)"
+    echo "  --armv5                  build ARMv5 binaries"
+    echo "  --armv7                  build ARMv7 binaries (default. see note below)"
     echo "  --out=<directory>        output directory [$OUTPUT]"
     echo "  --cross=<prefix>         cross-toolchain prefix [$CROSSPREFIX]"
     echo "  --config=<name>          kernel config name [$CONFIG]"
+    echo "  --savedefconfig          run savedefconfig"
+    echo "  --ccache=<path>          use compiler cache [${CCACHE:-not set}]"
     echo "  --verbose                show build commands"
     echo "  -j<number>               launch <number> parallel build jobs [$JOBS]"
     echo ""
@@ -103,7 +128,7 @@ fi
 if [ -n "$OPTION_CONFIG" ]; then
     CONFIG=$OPTION_CONFIG
 else
-    if [ "$OPTION_ARMV7" = "yes" ]; then
+    if [ "$ARCH" = "arm" -a "$OPTION_ARMV7" = "yes" ]; then
         CONFIG=goldfish_armv7
     fi
     echo "Auto-config: --config=$CONFIG"
@@ -186,6 +211,11 @@ if [ $? != 0 ] ; then
     fi
 fi
 
+if [ "$CCACHE" ] ; then
+    echo "Using ccache program: $CCACHE"
+    CROSSPREFIX="$CCACHE $CROSSPREFIX"
+fi
+
 export CROSS_COMPILE="$CROSSPREFIX" ARCH SUBARCH=$ARCH
 
 if [ "$OPTION_JOBS" ]; then
@@ -216,6 +246,11 @@ make -j$JOBS $MAKE_FLAGS       # build it
 if [ $? != 0 ] ; then
     echo "Could not build the kernel. Aborting !"
     exit 1
+fi
+
+if [ "$OPTION_SAVEDEFCONFIG" = "yes" ]; then
+    make savedefconfig
+    mv -f defconfig arch/$ARCH/configs/${CONFIG}_defconfig
 fi
 
 # Note: The exact names of the output files are important for the Android build,

@@ -3603,6 +3603,11 @@ int main(int argc, char **argv, char **envp)
         } else {
             PANIC("Missing initial system image path!");
         }
+        if (android_hw->hw_useext4) {
+            /* Using a nand device to approximate a block device until full
+             * support is added */
+            pstrcat(tmp,sizeof(tmp),",pagesize=512,extrasize=0");
+        }
         nand_add_dev(tmp);
     }
 
@@ -3638,6 +3643,11 @@ int main(int argc, char **argv, char **envp)
         if (initImage && *initImage) {
             pstrcat(tmp, sizeof(tmp), ",initfile=");
             pstrcat(tmp, sizeof(tmp), initImage);
+        }
+        if (android_hw->hw_useext4) {
+            /* Using a nand device to approximate a block device until full
+             * support is added */
+            pstrcat(tmp, sizeof(tmp), ",pagesize=512,extrasize=0");
         }
         nand_add_dev(tmp);
     }
@@ -3685,6 +3695,11 @@ int main(int argc, char **argv, char **envp)
         char  tmp[64];
         snprintf(tmp, sizeof(tmp), "%dm", android_hw->vm_heapSize);
         boot_property_add("dalvik.vm.heapsize",tmp);
+    }
+
+    /* From API 19 and above, the platform provides an explicit property for low memory devices. */
+    if (android_hw->hw_ramSize <= 512) {
+        boot_property_add("ro.config.low_ram", "true");
     }
 
     /* Initialize net speed and delays stuff. */
@@ -3874,6 +3889,11 @@ int main(int argc, char **argv, char **envp)
                 pstrcat(tmp, sizeof(tmp), ",file=");
                 pstrcat(tmp, sizeof(tmp), partPath);
             }
+        }
+        if (android_hw->hw_useext4) {
+            /* Using a nand device to approximate a block device until full
+             * support is added */
+            pstrcat(tmp, sizeof(tmp), ",pagesize=512,extrasize=0");
         }
         nand_add_dev(tmp);
     }
